@@ -38,9 +38,9 @@ data = []
 for _ in range(100):
     a = random.uniform(1.0, 2.0)  
     b = random.uniform(1.0, 2.0)
-    ma = int(a * 2**32)             
-    mb = int(b * 2**32)
-    target = int(a * b * 2**32)    
+    ma = int(a * 2**23)             
+    mb = int(b * 2**23)
+    target = int(a * b * 2**23)    
     data.append((ma, mb, target))
 
 def evaluate(individual):
