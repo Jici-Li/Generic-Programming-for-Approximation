@@ -24,7 +24,7 @@ pset.addPrimitive(logic_right_shift, 2)
 pset.addPrimitive(ite, 3)
 pset.addTerminal(0)
 pset.addTerminal(1)
-pset.addTerminal(2)  
+ 
 
 creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
 creator.create("Individual", gp.PrimitiveTree,
@@ -43,8 +43,8 @@ data = []
 for _ in range(100):
     a = random.uniform(1.0, 2.0)
     b = random.uniform(1.0, 2.0)
-    ma = int(a * 2**2)   
-    mb = int(b * 2**2)
+    ma = int(a * 2**1)   
+    mb = int(b * 2**1)
     target = ma * mb
     data.append((ma, mb, target))
 
@@ -89,7 +89,7 @@ def correct_mul(ma, mb):
     result = 0
     if (mb >> 0) & 1: result += ma         
     if (mb >> 1) & 1: result += ma << 1    
-    if (mb >> 2) & 1: result += ma << 2    
+  
     return result
 
 seed_str = (
@@ -98,8 +98,6 @@ seed_str = (
             "ite(and_(mb, 1), ma, 0),"
             "ite(and_(logic_right_shift(mb, 1), 1), left_shift(ma, 1), 0)"
         "),"
-        "ite(and_(logic_right_shift(mb, 2), 1), left_shift(ma, 2), 0)"
-    ")"
 )
 
 random.seed(42)
@@ -126,4 +124,4 @@ avg_error = sum(abs(func(ma, mb) - target) / target
 area = count_area(best)
 print(f"error{avg_error:.1%}")
 print(f"area {area}")
-print(f"fitness：{best.fitness.values[0]}")
+print(f"fitness{best.fitness.values[0]}")
