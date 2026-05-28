@@ -56,6 +56,23 @@ def count_area(individual):
                 cost += 1
     return cost
 
+def critical_path_depth(individual):  
+    def get_depth(nodes, idx):
+        node = nodes[idx]
+        if not hasattr(node, 'arity') or node.arity == 0:
+            return 0, idx + 1
+        max_child_depth = 0
+        next_idx = idx + 1
+        for _ in range(node.arity):
+            child_depth, next_idx = get_depth(nodes, next_idx)
+            max_child_depth = max(max_child_depth, child_depth)
+        if node.name in ('add', 'sub'):
+            return max_child_depth + 1, next_idx
+        else:
+            return max_child_depth, next_idx
+    depth, _ = get_depth(list(individual), 0)
+    return depth
+
 def evaluate(individual):
     func = gp.compile(individual, pset)
     try:
@@ -69,7 +86,8 @@ def evaluate(individual):
                 results.append(1.0)
         avg_error = sum(results) / len(results)
         area = count_area(individual)
-        return float(avg_error + area * 0.001),
+        path_depth = critical_path_depth(individual)
+        return float(avg_error + area * 0.001+ path_depth * 0.001),
     except:
         return 99999,
 
