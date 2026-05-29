@@ -95,7 +95,11 @@ def correct_mul(ma, mb):
 
 seed_str = (
     "add("
+     "add("
         "add("
+            "add("
+            "add("
+            "add("
             "add("
                 "ite(and_(mb, 1), ma, 0),"
                 "ite(and_(logic_right_shift(mb, 1), 1), left_shift(ma, 1), 0)"
@@ -103,9 +107,16 @@ seed_str = (
             "ite(and_(logic_right_shift(mb, 2), 1), left_shift(ma, 2), 0)"
         "),"
         "ite(and_(logic_right_shift(mb, 3), 1), left_shift(ma, 3), 0)"
-    ")"
+    "),"
     "ite(and_(logic_right_shift(mb, 4), 1), left_shift(ma, 4), 0)"
-")"
+"),"
+"ite(and_(logic_right_shift(mb, 5), 1), left_shift(ma, 5), 0)"
+"),"
+"ite(and_(logic_right_shift(mb, 6), 1), left_shift(ma, 6), 0)"
+"),"
+"ite(and_(logic_right_shift(mb, 7), 1), left_shift(ma, 7), 0)"
+"),"
+
 
 )
 
