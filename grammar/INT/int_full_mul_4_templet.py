@@ -43,8 +43,8 @@ data = []
 for _ in range(100):
     a = random.uniform(1.0, 2.0)
     b = random.uniform(1.0, 2.0)
-    ma = int(a * 2**1)   
-    mb = int(b * 2**1)
+    ma = int(a * 2**3)   
+    mb = int(b * 2**3)
     target = ma * mb
     data.append((ma, mb, target))
 
@@ -96,9 +96,14 @@ def correct_mul(ma, mb):
 seed_str = (
     "add("
         "add("
-            "ite(and_(mb, 1), ma, 0),"
-            "ite(and_(logic_right_shift(mb, 1), 1), left_shift(ma, 1), 0)"
+            "add("
+                "ite(and_(mb, 1), ma, 0),"
+                "ite(and_(logic_right_shift(mb, 1), 1), left_shift(ma, 1), 0)"
+            "),"
+            "ite(and_(logic_right_shift(mb, 2), 1), left_shift(ma, 2), 0)"
         "),"
+        "ite(and_(logic_right_shift(mb, 3), 1), left_shift(ma, 3), 0)"
+    ")"
 )
 
 random.seed(42)
