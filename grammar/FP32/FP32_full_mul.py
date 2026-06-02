@@ -3,6 +3,7 @@ import random
 import math
 import struct
 from deap import base, creator, tools, algorithms, gp
+from operator import attrgetter
 
 def left_shift(x, n):
     n = int(n) & 0x1F
@@ -29,6 +30,7 @@ def concat_fp32(s, e, m):
     e = int(e) & 0xFF
     m = int(m) & 0x7FFFFF
     return (s << 31) | (e << 23) | m
+
 
 def add_hidden_bit(exp, mant):
     exp = int(exp) & 0xFF
@@ -70,7 +72,6 @@ pset.addPrimitive(concat_fp32, 3)
 pset.addPrimitive(add_hidden_bit, 2)
 pset.addPrimitive(xor1, 2)
 
-# terminals
 pset.addTerminal(0)
 pset.addTerminal(1)
 pset.addTerminal(127)  
@@ -139,7 +140,6 @@ def get_bitwidth(individual, input_bits):
         else:
             out_bw = max(child_bws)
             
-
         bitwidths[idx] = out_bw
         return out_bw, next_idx
 
@@ -183,7 +183,6 @@ toolbox.register("select", tools.selTournament, tournsize=3)
 toolbox.register("mate", gp.cxOnePoint)
 toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr, pset=pset)
 
-from operator import attrgetter
 toolbox.decorate("mate", gp.staticLimit(key=attrgetter("height"), max_value=10))
 toolbox.decorate("mutate", gp.staticLimit(key=attrgetter("height"), max_value=10))
 
