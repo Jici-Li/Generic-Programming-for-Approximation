@@ -1,7 +1,7 @@
 import operator
 import random
-import math
 from deap import base, creator, tools, algorithms, gp
+import math
 
 def left_shift(x, n):
     n = int(n) & 0x1F
@@ -14,7 +14,7 @@ def logic_right_shift(x, n):
 def ite(c, a, b):
     return a if c else b
 
-INPUT_BITS = 4
+INPUT_BITS = 8
 
 pset = gp.PrimitiveSet("MAIN", 2)
 pset.renameArguments(ARG0="ma", ARG1="mb")
@@ -30,15 +30,22 @@ pset.addTerminal(1)
 pset.addTerminal(2)
 pset.addTerminal(3)
 pset.addTerminal(4)
- 
+pset.addTerminal(5)
+pset.addTerminal(6)
+pset.addTerminal(7)
+pset.addTerminal(8)
 
 creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMin)
+creator.create("Individual", gp.PrimitiveTree,
+               fitness=creator.FitnessMin)
 
 toolbox = base.Toolbox()
-toolbox.register("expr", gp.genHalfAndHalf,pset=pset, min_=1, max_=4)
-toolbox.register("individual", tools.initIterate,creator.Individual, toolbox.expr)
-toolbox.register("population", tools.initRepeat,list, toolbox.individual)
+toolbox.register("expr", gp.genHalfAndHalf,
+                 pset=pset, min_=1, max_=4)
+toolbox.register("individual", tools.initIterate,
+                 creator.Individual, toolbox.expr)
+toolbox.register("population", tools.initRepeat,
+                 list, toolbox.individual)
 
 random.seed(42)
 data = []
@@ -106,7 +113,8 @@ def evaluate(individual):
         for ma, mb, target in data:
             try:
                 result = func(ma, mb)
-                results.append(abs(result - target) / target)
+                rel_error = abs(result - target) / target
+                results.append(rel_error)
             except:
                 results.append(1.0)
         avg_error = sum(results) / len(results)
@@ -115,7 +123,6 @@ def evaluate(individual):
         return float(avg_error * 100 + area * 0.1 + depth * 0.01),
     except:
         return 99999,
-
 
 toolbox.register("evaluate", evaluate)
 toolbox.register("select", tools.selTournament, tournsize=3)
@@ -142,11 +149,13 @@ seed_func = gp.compile(seed_tree, pset)
 
 random.seed(42)
 pop = toolbox.population(n=499)
+
+seed_tree = gp.PrimitiveTree.from_string(seed_str, pset)
 seed_ind = creator.Individual(seed_tree)
 seed_ind.fitness.values = evaluate(seed_ind)
 pop.append(seed_ind)
 
-pop, logbook = algorithms.eaSimple(pop, toolbox,cxpb=0.5, mutpb=0.2, ngen=100,verbose=True)
+pop, logbook = algorithms.eaSimple( pop, toolbox, cxpb=0.5, mutpb=0.2, ngen=100, verbose=True)
 
 best = tools.selBest(pop, 1)[0]
 func = gp.compile(best, pset)
