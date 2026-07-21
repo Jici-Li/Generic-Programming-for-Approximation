@@ -1,69 +1,188 @@
-import math
-from deap import gp
+"""
+Area model for typed GP primitives.
+
+Each node's area cost is derived from its bit-width, parsed directly
+from the primitive name (e.g. 'add_4_5', 'mul_4_4', 'trunc_8_6').
+
+Total area = sum of node costs.
+
+Cost formulas are placeholders. Tune later based on real hardware
+synthesis or published data.
+"""
 
 
-def count_area_nodes(nodes, input_bits):
-    def calc_bw(idx):
-        node = nodes[idx]
-        if not hasattr(node, 'arity') or node.arity == 0:
-            name = getattr(node, 'name', '')
-            if name in ('ma', 'mb'):
-                return input_bits, idx + 1
-            try:
-                v = int(node.value) if hasattr(node, 'value') else int(name)
-                return (1 if v == 0 else int(math.log2(abs(v))) + 1), idx + 1
-            except:
-                return 1, idx + 1
-        child_bws = []
-        next_idx = idx + 1
-        for _ in range(node.arity):
-            bw, next_idx = calc_bw(next_idx)
-            child_bws.append(bw)
-        name = node.name
-        if name in ('add', 'sub'):
-            out_bw = max(child_bws[0], child_bws[1]) + 1
-        elif name in ('and_', 'or_'):
-            out_bw = max(child_bws[0], child_bws[1])
-        elif name == 'left_shift':
-            out_bw = min(child_bws[0] + (2 ** child_bws[1] - 1), 64)
-        elif name == 'logic_right_shift':
-            out_bw = child_bws[0]
-        elif name == 'ite':
-            out_bw = max(child_bws[1], child_bws[2])
-        else:
-            out_bw = max(child_bws)
-        return out_bw, next_idx
-
-    cost = 0
-    def traverse(idx):
-        nonlocal cost
-        node = nodes[idx]
-        name = getattr(node, 'name', '')
-        bw, _ = calc_bw(idx)
-        if name in ('add', 'sub'):
-            cost += bw
-        if not hasattr(node, 'arity') or node.arity == 0:
-            return idx + 1
-        next_idx = idx + 1
-        for _ in range(node.arity):
-            next_idx = traverse(next_idx)
-        return next_idx
-
-    bw_root, _ = calc_bw(0)
-    traverse(0)
-    return cost, bw_root
+# ==========================================================
+# Op cost formulas (tunable)
+# ==========================================================
+# Each entry is a lambda that takes the relevant bit-width params
+# and returns an integer area cost.
+OP_COST_FN = {
+    'add':    lambda bits_out: bits_out,                # ~one FA per bit
+    'sub':    lambda bits_out: bits_out,                # same as add
+    'mul':    lambda bits_x, bits_y: bits_x * bits_y,   # ~area square
+    'and':    lambda bits_out: bits_out,                # one AND per bit
+    'or':     lambda bits_out: bits_out,                # one OR per bit
+    'lshift': lambda bits_in, k: 0,                     # hardwired shift ~ free
+    'rshift': lambda bits_in, k: 0,                     # same
+    'ite':    lambda bits_out: bits_out,                # one MUX per bit
+    'trunc':  lambda src, dst: 0,                       # truncation = drop wires
+}
 
 
-def eval_true(individual, pset, data, input_bits):
-    func = gp.compile(individual, pset)
-    results = []
-    for ma, mb, target in data:
-        try:
-            result = func(ma, mb)
-            results.append(abs(result - target) / target)
-        except:
-            results.append(1.0)
-    avg_error = sum(results) / len(results)
-    nodes = list(individual)
-    area, _ = count_area_nodes(nodes, input_bits)
-    return avg_error, area
+# ==========================================================
+# Parse primitive names into (kind, bit-width params)
+# ==========================================================
+def parse_op_name(name):
+    """
+    Parse a primitive/terminal name into (kind, params_tuple).
+
+    Examples:
+      'add_4_5'       -> ('add',   (4, 5))
+      'sub_6_6'       -> ('sub',   (6, 6))
+      'mul_4_4'       -> ('mul',   (4, 4))
+      'and_4_4'       -> ('and',   (4, 4))
+      'or_5_5'        -> ('or',    (5, 5))
+      'lshift_4_by3'  -> ('lshift',(4, 3))
+      'rshift_4_by1'  -> ('rshift',(4, 1))
+      'trunc_8_6'     -> ('trunc', (8, 6))
+      'ite_5'         -> ('ite',   (5,))
+      'zero_4'        -> ('const', (4,))
+      'one_4'         -> ('const', (4,))
+      'ma', 'mb'      -> ('input', ())
+    """
+    # inputs
+    if name in ('ma', 'mb', 'ARG0', 'ARG1'):
+        return ('input', ())
+
+    # constants
+    if name.startswith('zero_') or name.startswith('one_'):
+        w = int(name.split('_')[1])
+        return ('const', (w,))
+    
+    # small constants: const_{value}_{width}
+    if name.startswith('const_'):
+        _, _val, w = name.split('_')
+        return ('const', (int(w),))
+
+    # trunc first (before add_/sub_ prefix match steal it)
+    if name.startswith('trunc_'):
+        src, dst = map(int, name[len('trunc_'):].split('_'))
+        return ('trunc', (src, dst))
+
+    # ite (only one bit-width parameter)
+    if name.startswith('ite_'):
+        w = int(name[len('ite_'):])
+        return ('ite', (w,))
+
+    # shifts: lshift_X_byK  / rshift_X_byK
+    for prefix in ('lshift_', 'rshift_'):
+        if name.startswith(prefix):
+            kind = prefix.rstrip('_')
+            rest = name[len(prefix):]
+            x_str, k_str = rest.split('_by')
+            return (kind, (int(x_str), int(k_str)))
+
+    # binary ops: add_X_Y / sub_X_Y / and_X_Y / or_X_Y / mul_X_Y
+    for prefix in ('add_', 'sub_', 'and_', 'or_', 'mul_'):
+        if name.startswith(prefix):
+            kind = prefix.rstrip('_')
+            x, y = map(int, name[len(prefix):].split('_'))
+            return (kind, (x, y))
+
+    raise ValueError(f"Unknown primitive name: {name!r}")
+
+
+# ==========================================================
+# Cost of one node
+# ==========================================================
+def node_cost(name):
+    """
+    Compute the area cost of a single node given its primitive name.
+    """
+    kind, params = parse_op_name(name)
+
+    # zero-cost cases
+    if kind in ('input', 'const'):
+        return 0
+
+    # ------- binary ops that produce max(x,y) or max(x,y)+1 -------
+    if kind in ('add', 'sub'):
+        bits_out = max(params) + 1
+        return OP_COST_FN[kind](bits_out)
+
+    if kind in ('and', 'or'):
+        bits_out = max(params)
+        return OP_COST_FN[kind](bits_out)
+
+    # ------- multiplication -------
+    if kind == 'mul':
+        return OP_COST_FN['mul'](*params)
+
+    # ------- shifts (parameterized by shift amount k) -------
+    if kind in ('lshift', 'rshift'):
+        return OP_COST_FN[kind](*params)
+
+    # ------- ite (branch bit-width) -------
+    if kind == 'ite':
+        return OP_COST_FN['ite'](*params)
+
+    # ------- trunc -------
+    if kind == 'trunc':
+        return OP_COST_FN['trunc'](*params)
+
+    raise ValueError(f"Unhandled kind: {kind}")
+
+
+# ==========================================================
+# Total area of a GP tree
+# ==========================================================
+def count_area(individual):
+    """
+    Sum up the area cost of all nodes in a DEAP GP tree (individual).
+    """
+    total = 0
+    for node in individual:
+        name = getattr(node, 'name', str(node))
+        total += node_cost(name)
+    return total
+
+
+# ==========================================================
+# Quick self-test
+# ==========================================================
+if __name__ == "__main__":
+    # Check a bunch of primitive names to make sure parsing works
+    tests = [
+        # (name, expected_kind, expected_params, expected_cost)
+        ('ma',            'input',  (),         0),
+        ('mb',            'input',  (),         0),
+        ('zero_4',        'const',  (4,),       0),
+        ('one_5',         'const',  (5,),       0),
+        ('add_4_5',       'add',    (4, 5),     6),   # max(4,5)+1 = 6
+        ('sub_6_6',       'sub',    (6, 6),     7),   # max+1 = 7
+        ('and_4_4',       'and',    (4, 4),     4),
+        ('or_5_5',        'or',     (5, 5),     5),
+        ('mul_4_4',       'mul',    (4, 4),     16),  # 4*4
+        ('mul_4_8',       'mul',    (4, 8),     32),
+        ('lshift_4_by3',  'lshift', (4, 3),     0),   # free
+        ('rshift_5_by2',  'rshift', (5, 2),     0),   # free
+        ('trunc_8_6',     'trunc',  (8, 6),     0),   # free
+        ('ite_5',         'ite',    (5,),       5),
+    ]
+
+    print(f"{'name':<18} {'kind':<8} {'params':<12} {'cost':>4}")
+    print("-" * 50)
+    all_ok = True
+    for name, exp_kind, exp_params, exp_cost in tests:
+        kind, params = parse_op_name(name)
+        cost = node_cost(name)
+        ok = (kind == exp_kind and params == exp_params and cost == exp_cost)
+        all_ok = all_ok and ok
+        mark = "OK" if ok else "FAIL"
+        print(f"{name:<18} {kind:<8} {str(params):<12} {cost:>4}  {mark}")
+
+    print()
+    if all_ok:
+        print("[SUCCESS] All parse and cost tests passed.")
+    else:
+        print("[FAIL] Some tests failed. Check the failed lines.")
