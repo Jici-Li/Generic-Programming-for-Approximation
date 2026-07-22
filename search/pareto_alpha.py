@@ -149,7 +149,7 @@ def main():
     print(f"{'='*60}\n")
 
     pset = make_pset(MA_BITS, MB_BITS, OUTPUT_BITS)
-    base_data = make_data(MA_BITS, MB_BITS, n_samples=N_DATA,
+    base_data = make_data(MA_BITS, MB_BITS, OUTPUT_BITS, n_samples=N_DATA,
                           mantissa_domain=False)
 
     if hasattr(creator, "FitnessMin"): del creator.FitnessMin

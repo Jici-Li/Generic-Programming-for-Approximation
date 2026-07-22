@@ -230,12 +230,33 @@ def make_seed_str(ma_format, mb_format, output_format):
     return f"fcast_{tag(mul_fmt)}_{tag(output_format)}({mul_expr})"
 
 
+def make_narrow_seed_strs(ma_format, mb_format, output_format):
+    ea, ma_m = ma_format
+    eb, mb_m = mb_format
+
+    def tag(fmt):
+        return f"e{fmt[0]}m{fmt[1]}"
+
+    def build(a_fmt, b_fmt):
+        mul_fmt = (a_fmt[0] + b_fmt[0], a_fmt[1] + b_fmt[1] + 1)
+        a_arg = f"fcast_{tag(ma_format)}_{tag(a_fmt)}(ma)" if a_fmt != ma_format else "ma"
+        b_arg = f"fcast_{tag(mb_format)}_{tag(b_fmt)}(mb)" if b_fmt != mb_format else "mb"
+        mul_expr = f"fmul_{tag(a_fmt)}_{tag(b_fmt)}({a_arg}, {b_arg})"
+        if mul_fmt == output_format:
+            return mul_expr
+        return f"fcast_{tag(mul_fmt)}_{tag(output_format)}({mul_expr})"
+
+    seeds = []
+    for m_a in range(0, ma_m + 1):
+        for m_b in range(0, mb_m + 1):
+            if m_a == ma_m and m_b == mb_m:
+                continue   # that's make_seed_str's exact seed, skip the dup
+            seeds.append(build((ea, m_a), (eb, m_b)))
+    return seeds
+
+
 def make_data(ma_format, mb_format, n_samples=100, seed=42,
               exclude_subnormal_inputs=False):
-#target = exact real product (boss's spec: error is relative to the
-#exact value). exclude_subnormal_inputs pre-filters exp_field==0
-#patterns; flip on once the supervisors confirm the spec domain
-#excludes subnormals (the matching assume must go into the CVC5 spec).
     ea, ma_m = ma_format
     eb, mb_m = mb_format
     rng = random.Random(seed)
@@ -255,3 +276,6 @@ def make_data(ma_format, mb_format, n_samples=100, seed=42,
         target = decode(a_bits, ea, ma_m) * decode(b_bits, eb, mb_m)
         data.append((a_bits, b_bits, target))
     return data
+
+#Q:should we include add and sub in primitives? i haven't try but it may causes 
+#Q:

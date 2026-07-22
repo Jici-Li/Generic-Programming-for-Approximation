@@ -202,7 +202,12 @@ def make_seed_str(ma_bits, mb_bits, output_bits):
     """
     mul_out = ma_bits + mb_bits
     if mul_out > output_bits:
-        return f"trunc_{mul_out}_{output_bits}(mul_{ma_bits}_{mb_bits}(ma, mb))"
+        shift = mul_out - output_bits
+        # trunc keeps the LOW bits (see _make_trunc: a & mask) -- must shift
+        # the high, magnitude-carrying bits down into that low window first,
+        # or trunc silently discards them instead of the low-order precision.
+        return (f"trunc_{mul_out}_{output_bits}("
+                f"rshift_{mul_out}_by{shift}(mul_{ma_bits}_{mb_bits}(ma, mb)))")
     elif mul_out == output_bits:
         return f"mul_{ma_bits}_{mb_bits}(ma, mb)"
     else:
@@ -215,7 +220,12 @@ def make_seed_str(ma_bits, mb_bits, output_bits):
 # ==========================================================
 # Training data
 # ==========================================================
-def make_data(ma_bits, mb_bits, n_samples=100, seed=42, mantissa_domain=False):
+def make_data(ma_bits, mb_bits, output_bits, n_samples=100, seed=42, mantissa_domain=False):
+    # when output_bits < ma_bits+mb_bits, the exact product can't fit in the
+    # output type -- the circuit can only ever return a right-shifted
+    # (rescaled) approximation, same shift as make_seed_str uses, so target
+    # must be shifted the same way or every comparison is apples-to-oranges.
+    shift = max(0, (ma_bits + mb_bits) - output_bits)
     rng = random.Random(seed)
     lo_a = (1 << (ma_bits - 1)) if mantissa_domain else 0
     lo_b = (1 << (mb_bits - 1)) if mantissa_domain else 0
@@ -223,7 +233,7 @@ def make_data(ma_bits, mb_bits, n_samples=100, seed=42, mantissa_domain=False):
     for _ in range(n_samples):
         ma = rng.randint(lo_a, (1 << ma_bits) - 1)
         mb = rng.randint(lo_b, (1 << mb_bits) - 1)
-        data.append((ma, mb, ma * mb))
+        data.append((ma, mb, (ma * mb) >> shift))
     return data
 
 def make_block_seed_strs(ma_bits, mb_bits, output_bits):

@@ -16,7 +16,8 @@ from operator import attrgetter
 import matplotlib.pyplot as plt
 from deap import base, creator, tools, gp, algorithms
 
-from benchmarks.minifloat_mult import make_pset, make_seed_str, make_data, decode
+from benchmarks.minifloat_mult import (make_pset, make_seed_str, make_narrow_seed_strs,
+                                       make_data, decode)
 
 
 # ==========================================================
@@ -136,7 +137,8 @@ def eval_true(individual, pset, data, output_format):
 # ==========================================================
 # GP search
 # ==========================================================
-def run_gp(pset, data, output_format, seed_area, seed_str, alpha, ngen, pop_size):
+def run_gp(pset, data, output_format, seed_area, seed_str, alpha, ngen, pop_size,
+           extra_seed_strs=()):
     seed_tree = gp.PrimitiveTree.from_string(seed_str, pset)
     max_h = max(20, seed_tree.height + 2)
 
@@ -167,6 +169,14 @@ def run_gp(pset, data, output_format, seed_area, seed_str, alpha, ngen, pop_size
     seed_ind = creator.Individual(gp.PrimitiveTree.from_string(seed_str, pset))
     seed_ind.fitness.values = toolbox.evaluate(seed_ind)
     pop.append(seed_ind)
+
+    for extra_str in extra_seed_strs:
+        try:
+            extra_ind = creator.Individual(gp.PrimitiveTree.from_string(extra_str, pset))
+        except Exception:
+            continue
+        extra_ind.fitness.values = toolbox.evaluate(extra_ind)
+        pop.append(extra_ind)
 
     hof = tools.HallOfFame(1)
     pop, _ = algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.2,
@@ -202,24 +212,31 @@ def main():
     seed_str = make_seed_str(MA_FORMAT, MB_FORMAT, OUTPUT_FORMAT)
     seed_tree = gp.PrimitiveTree.from_string(seed_str, pset)
     seed_area = count_area(seed_tree)
+    narrow_seed_strs = make_narrow_seed_strs(MA_FORMAT, MB_FORMAT, OUTPUT_FORMAT)
     print(f"Seed:      {seed_str}")
-    print(f"Seed area: {seed_area}\n")
+    print(f"Seed area: {seed_area}")
+    print(f"Extra seeds: {len(narrow_seed_strs)} narrowed mantissa combinations\n")
 
     results = []
     for alpha in errors:
         best = run_gp(pset, data, OUTPUT_FORMAT, seed_area, seed_str,
-                      alpha, NGEN, POP_SIZE)
+                      alpha, NGEN, POP_SIZE, extra_seed_strs=narrow_seed_strs)
         err, area = eval_true(best, pset, data, OUTPUT_FORMAT)
         results.append((alpha, err, area))
-        print(f"  alpha={alpha:<5}  best_err={err:.1%}  area={area}  "
+        reduction = 100.0 * (1.0 - area / seed_area)
+        print(f"  alpha={alpha:<5}  best_err={err:.1%}  area={area:>4}  "
+              f"({reduction:+.1f}% vs seed area={seed_area})  "
               f"tree={str(best)[:80]}")
 
     fig, ax = plt.subplots(figsize=(9, 6))
     pts = sorted(results, key=lambda t: t[2])
-    ax.plot([r[2] for r in pts], [r[1] * 100 for r in pts], 'o-')
+    ax.plot([r[2] for r in pts], [r[1] * 100 for r in pts], 'o-', label='best found')
+    ax.axvline(seed_area, color='gray', linestyle='--',
+               label=f'seed area={seed_area}')
     ax.set_xlabel('Area (placeholder cost)')
     ax.set_ylabel('Worst-case relative error (%)')
     ax.grid(True, alpha=0.3)
+    ax.legend()
     fname = (f'pareto_minifloat_ma{MA_FORMAT}_mb{MB_FORMAT}'
              f'_out{OUTPUT_FORMAT}.png')
     plt.tight_layout()
