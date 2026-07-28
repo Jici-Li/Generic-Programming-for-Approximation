@@ -10,13 +10,15 @@ Cost formulas are placeholders. Tune later based on real hardware
 synthesis or published data.
 """
 
+import os
+
 
 # ==========================================================
 # Op cost formulas (tunable)
 # ==========================================================
 # Each entry is a lambda that takes the relevant bit-width params
 # and returns an integer area cost.
-OP_COST_FN = {
+OP_COST_FN_QUADRATIC = {
     'add':    lambda bits_out: bits_out,                # ~one FA per bit
     'sub':    lambda bits_out: bits_out,                # same as add
     'mul':    lambda bits_x, bits_y: bits_x * bits_y,   # ~area square
@@ -27,6 +29,33 @@ OP_COST_FN = {
     'ite':    lambda bits_out: bits_out,                # one MUX per bit
     'trunc':  lambda src, dst: 0,                       # truncation = drop wires
 }
+
+# ---- symbolic/ranked cost model (diagnostic experiment) ----
+# Tests whether GP ever discovers add/sub/ite-based compound rewrites once
+# mul's cost stops being *quadratic* -- ranked purely by op "expense" (mul
+# most expensive, then add/sub, then trunc/rcast, then ite, then shift=free)
+# with LINEAR (not quadratic) width-scaling for every op, so narrowing still
+# trades off against area (a flat, width-independent cost per op would make
+# the single-node exact mul unbeatable for every alpha and collapse the
+# whole experiment -- verified degenerate before choosing this instead).
+# Weights are placeholders chosen only to preserve the requested ranking
+# mul > add/sub > trunc/rcast > ite > shift(=0); not derived from synthesis.
+_C_MUL   = int(os.environ.get('GP_C_MUL', 4))
+_C_ADD, _C_TRUNC, _C_ITE = 3, 2, 1
+OP_COST_FN_SYMBOLIC = {
+    'add':    lambda bits_out: _C_ADD * bits_out,
+    'sub':    lambda bits_out: _C_ADD * bits_out,
+    'mul':    lambda bits_x, bits_y: _C_MUL * (bits_x + bits_y),  # linear, not x*y
+    'and':    lambda bits_out: _C_ITE * bits_out,
+    'or':     lambda bits_out: _C_ITE * bits_out,
+    'lshift': lambda bits_in, k: 0,
+    'rshift': lambda bits_in, k: 0,
+    'ite':    lambda bits_out: _C_ITE * bits_out,
+    'trunc':  lambda src, dst: _C_TRUNC,             # flat per-cast cost, not 0
+}
+
+SYMBOLIC_COST = os.environ.get('GP_SYMBOLIC_COST', '0') == '1'
+OP_COST_FN = OP_COST_FN_SYMBOLIC if SYMBOLIC_COST else OP_COST_FN_QUADRATIC
 
 
 # ==========================================================
@@ -68,6 +97,35 @@ def parse_op_name(name):
     if name.startswith('trunc_'):
         src, dst = map(int, name[len('trunc_'):].split('_'))
         return ('trunc', (src, dst))
+
+    # rcast: saturating round-to-nearest narrow (benchmarks/integer.py's
+    # _make_rcast). Costed as free, same as trunc -- consistent with this
+    # project's established "casts/shifts are free wires" convention used
+    # for every other benchmark's cast primitive (mxint's scast, log's
+    # scast, minifloat's fcast), even though a *real* round-then-clip
+    # needs an adder + comparator unlike a pure bit-mask trunc. Kept
+    # consistent on purpose so this experiment tests "does round beat
+    # floor at equal nominal cost", not a different question about
+    # rounding's own hardware cost.
+    if name.startswith('rcast_'):
+        src, dst = map(int, name[len('rcast_'):].split('_'))
+        return ('rcast', (src, dst))
+
+    # block_mul_k: blockmul_K_MA_MB -- narrowed-operand multiply, one
+    # atomic primitive per k (benchmarks/integer.py's _make_block_mul)
+    if name.startswith('blockmul_'):
+        k, ma, mb = map(int, name[len('blockmul_'):].split('_'))
+        return ('blockmul', (k, ma, mb))
+
+    # cross_mul_k: crossmul_hilo_K_MA_MB (aH*bL) / crossmul_lohi_K_MA_MB
+    # (aL*bH) -- the two terms block_mul_k drops. Kept as distinct kinds
+    # since their multiplied widths differ when ma_bits != mb_bits.
+    # (benchmarks/integer.py's _make_cross_mul_hi_lo/_make_cross_mul_lo_hi)
+    for prefix, kind in (('crossmul_hilo_', 'crossmul_hilo'),
+                        ('crossmul_lohi_', 'crossmul_lohi')):
+        if name.startswith(prefix):
+            k, ma, mb = map(int, name[len(prefix):].split('_'))
+            return (kind, (k, ma, mb))
 
     # ite (only one bit-width parameter)
     if name.startswith('ite_'):
@@ -118,6 +176,21 @@ def node_cost(name):
     if kind == 'mul':
         return OP_COST_FN['mul'](*params)
 
+    # ------- block_mul_k: same 'area ~ bits_x*bits_y' rule as mul, but on
+    # the narrowed (ma-k, mb-k) operand widths actually being multiplied --
+    if kind == 'blockmul':
+        k, ma, mb = params
+        return OP_COST_FN['mul'](ma - k, mb - k)
+
+    # ------- cross_mul_k: aH*bL is an (ma-k)x k multiply, aL*bH is a
+    # k x (mb-k) multiply -- same 'bits_x*bits_y' rule, different widths --
+    if kind == 'crossmul_hilo':
+        k, ma, mb = params
+        return OP_COST_FN['mul'](ma - k, k)
+    if kind == 'crossmul_lohi':
+        k, ma, mb = params
+        return OP_COST_FN['mul'](k, mb - k)
+
     # ------- shifts (parameterized by shift amount k) -------
     if kind in ('lshift', 'rshift'):
         return OP_COST_FN[kind](*params)
@@ -128,6 +201,11 @@ def node_cost(name):
 
     # ------- trunc -------
     if kind == 'trunc':
+        return OP_COST_FN['trunc'](*params)
+
+    # ------- rcast (see parse_op_name's rcast branch for why this is
+    # deliberately costed the same as trunc) -------
+    if kind == 'rcast':
         return OP_COST_FN['trunc'](*params)
 
     raise ValueError(f"Unhandled kind: {kind}")
