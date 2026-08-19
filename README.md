@@ -267,12 +267,11 @@ E4M3×E4M3→E4M4, `threshold=1`, CVC5-verified unless noted:
 | Old params (archive_size=20, tournsize=3, cxpb=0.5, mutpb=0.3) | 261 | Yes | same result at threshold=1/2/4 |
 | New params + expanded pset (`lzc_u`/`ushr_`/`ushl_`/`sticky_`/`orbit_u`/`unot_` added) | 258 | Yes | new primitives appear in the result, but not exploited for their dynamic behavior |
 
-**The changes:**
-1. A 1976 juction to 1: 
-A part of seed has repeatly calculating `input_ieee_e4m3(ma/mb)` decode and `sigmul_4_4` fraction multiplication. GP change them into `ucast_10_3(uone_10)`: a normal number expression have nothing to do with ma and mb
+**What changed vs. the seed** (tuned-params: 262 to 258):
 
-2. Change how we calculate:
-In seed we have:`uconcat_1_8(bit_to_u1(xor_sign(msb_u8(...ARG0),msb_u8(...ARG1))), uconcat_4_4(...))`, GP change it into`excpostnorm_lookup(uhigh_10_2(...))`: `excpostnorm_lookup` is original to be used in look up in table after rounding, GP use it to generate the result.
+1. **A 1976-node block collapsed to 2 nodes.** A part of the seed repeatedly recomputes `input_ieee_e4m3(ma/mb)` decoding and `sigmul_4_4` significand multiplication — duplicated because a GP tree can't share subexpressions, so the same computation gets re-expanded wherever it's referenced. GP replaced this entire block with `ucast_10_3(uone_10)`, a constant expression that doesn't depend on `ma`/`mb` at all — verified by CVC5 to be equivalent across the whole input domain, meaning this block's result never actually reached the output.
+
+2. **Reused an existing lookup table instead of recomputing.** The seed computes `uconcat_1_8(bit_to_u1(xor_sign(msb_u8(...ARG0), msb_u8(...ARG1))), uconcat_4_4(...))`; GP replaced it with `excpostnorm_lookup(uhigh_10_2(...))`. `excpostnorm_lookup` is originally there to look up FPMult's post-rounding normalization table — GP repurposed it here to produce the same result through a different mechanism, not just by folding to a constant.
 
 
 ## Verification
@@ -456,7 +455,7 @@ def make_evaluate_ulp(threshold, pset, data, src_format, out_format, seed_area):
 | [log.py](benchmarks/log.py) | Logarithmic-domain (LNS) reference model + GP primitives (turns multiplication into addition) |
 | [block_log.py](benchmarks/block_log.py) | Block-shared-exponent-bias variant of `log.py` |
 | [minifloat.py](benchmarks/minifloat.py) | Pure-Python minifloat `FP(e,m)` reference model (used for algorithm-level multiplication search) |
-| [minifloat_hardware.py](benchmarks/minifloat_hardware.py) | Decomposes minifloat multiplication into hardware-level primitives (decode → significand multiply → exponent combine → normalize → round → encode), corresponding to the [FloPoCo correspondence tables](#translating-flopoco-into-our-primitives-seed) above |
+| [minifloat_hardware.py](benchmarks/minifloat_hardware.py) | Decomposes minifloat multiplication into hardware-level primitives (decode → significand multiply → exponent combine → normalize → round → encode), corresponding to the [FloPoCo correspondence tables](#translating-flopoco-into-our-primitives-seed) above. Also has `make_shift_add_seed_str`, a second seed builder that does the significand multiply via unrolled shift-and-add and dynamic `lzc_u`/`ushl_`-based renormalization instead of `sigmul_`/the fixed carry-bit select — same output as `make_exact_seed_str`, verified bit-exact across all inputs, larger area (331 vs 262 cells) |
 | [block_minifloat.py](benchmarks/block_minifloat.py) | Block-shared-exponent-bias variant of `minifloat.py` |
 | [mxint_hardware.py](benchmarks/mxint_hardware.py) | Shared-exponent block quantization + bit-level hardware GP primitive set (sign/magnitude split, shifts, leading-zero count, etc.); a low-level library shared by several modules |
 | [block_fp.py](benchmarks/block_fp.py) | MSFP format (block-shared power-of-two exponent), reuses the primitive set from `mxint_hardware.py` |
