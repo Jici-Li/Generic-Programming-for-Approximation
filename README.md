@@ -267,7 +267,13 @@ E4M3×E4M3→E4M4, `threshold=1`, CVC5-verified unless noted:
 | Old params (archive_size=20, tournsize=3, cxpb=0.5, mutpb=0.3) | 261 | Yes | same result at threshold=1/2/4 |
 | New params + expanded pset (`lzc_u`/`ushr_`/`ushl_`/`sticky_`/`orbit_u`/`unot_` added) | 258 | Yes | new primitives appear in the result, but not exploited for their dynamic behavior |
 
-That run used `lzc_u10`, `lzc_u11`, `sticky_13_13`, `sticky_13_4`, `sticky_2_13`, `ushl_7_5`, `ushl_7_9`, `ushr_10_4`, `ushr_11_1`, `ushr_13_11`, `ushr_4_1`, `ushr_4_2`. Checking each call's operands: they're fed `uone_x`/`uzero_x` constants, not `ma`/`mb`-derived subtrees — GP is using them as another way to compute a constant, not for genuine data-dependent renormalization. The bulk of the diff against the seed is the same pattern seen elsewhere: large blocks of duplicated `sigmul_4_4`/`input_ieee_e4m3` (present because the seed string can't share subexpressions) collapsed down to a handful of constant-producing nodes, e.g. a 543-node block replaced by `uadd_6_4(uone_6, uone_4)`, a 114-node block replaced by `usubwrap_2_2(uone_2, uone_2)`.
+**The changes:**
+1. A 1976 juction to 1: 
+A part of seed has repeatly calculating `input_ieee_e4m3(ma/mb)` decode and `sigmul_4_4` fraction multiplication. GP change them into `ucast_10_3(uone_10)`: a normal number expression have nothing to do with ma and mb
+
+2. Change how we calculate:
+In seed we have:`uconcat_1_8(bit_to_u1(xor_sign(msb_u8(...ARG0),msb_u8(...ARG1))), uconcat_4_4(...))`, GP change it into`excpostnorm_lookup(uhigh_10_2(...))`: `excpostnorm_lookup` is original to be used in look up in table after rounding, GP use it to generate the result.
+
 
 ## Verification
 
@@ -461,16 +467,10 @@ def make_evaluate_ulp(threshold, pset, data, src_format, out_format, seed_area):
 |---|---|
 | [area_model.py](search/area_model.py) | A placeholder (non-real-synthesis) area cost model; `integer_search.py` defaults to it as a cheap fitness signal |
 | [integer_search.py](search/integer_search.py) | CEGIS + GP search library for the integer multiplier (`run_gp`), called by the experiment scripts below |
-| [integer_shift_add_seed_experiment.py](search/integer_shift_add_seed_experiment.py) | Uses a hand-written shift-and-add decomposition as the seed, real Yosys cost, compared against the exact-multiply baseline (corresponds to [SHIFT_ADD_ABLATION_REPORT.md](SHIFT_ADD_ABLATION_REPORT.md)) |
 | [log_search.py](search/log_search.py) | GP search driver + Pareto plotting for the LNS `log.py` |
 | [block_log_search.py](search/block_log_search.py) | Search driver for `block_log.py`, reuses `log_search.py` |
-| [minifloat_hardware_search.py](search/minifloat_hardware_search.py) | Several GP search variants for `minifloat_hardware.py` (`run_gp`/`run_gp_rmse`/`run_gp_faithful`/`run_gp_ulp`) |
-| [minifloat_hardware_shift_add_seed_experiment.py](search/minifloat_hardware_shift_add_seed_experiment.py) | Experiment driver using `minifloat_hardware.py`'s exact decomposition as the seed |
-| [block_minifloat_hardware_shift_add_seed_experiment.py](search/block_minifloat_hardware_shift_add_seed_experiment.py) | Same as above, applied to `block_minifloat.py` |
+| [minifloat_hardware_search.py](search/minifloat_hardware_search.py) | Several GP search variants for `minifloat_hardware.py` (`run_gp`/`run_gp_rmse`/`run_gp_faithful`/`run_gp_ulp`)|
 | [mxint_common.py](search/mxint_common.py) | GP search engine shared by `mxint_hardware.py`/`block_fp.py` (`run_gp`/`run_gp_rmse`), can toggle real synthesis cost on or off |
-| [mxint_shift_add_seed_experiment.py](search/mxint_shift_add_seed_experiment.py) | Experiment driver using mxint's partial-product (shift-and-add analogue) decomposition as the seed |
-| [block_fp_shift_add_seed_experiment.py](search/block_fp_shift_add_seed_experiment.py) | Same as above, applied to `block_fp.py` |
-
 ### synth/ — GP tree → Verilog → real synthesis cost
 
 | File | Purpose |
