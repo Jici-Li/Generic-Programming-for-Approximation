@@ -488,3 +488,14 @@ def make_evaluate_ulp(threshold, pset, data, src_format, out_format, seed_area):
 | [verify_log_error_bound.py](verify/verify_log_error_bound.py) | Drives `log_cvc5_translate.py` through CVC5 to compute/verify the log-domain error bound |
 | [minifloat_verify.py](verify/minifloat_verify.py) | Verifies minifloat circuits using CVC5's FloatingPoint theory (error bounds, add/multiply ULP bounds) |
 | [mxint_hardware_verify.py](verify/mxint_hardware_verify.py) | CVC5 bit-vector verification for mxint_hardware/block_fp circuits |
+
+### docs/flopoco_reference — The flopoco's VHDl code
+
+| File | Purpose |
+|---|---|
+| [FPMult_e4m3_to_e4m4.vhdl](docs/flopoco_reference/FPMult_e4m3_to_e4m4.vhdl) | Multiplication process offloating of flopoco |
+| [InputIEEE_e4m3.vhdl](docs/flopoco_reference/InputIEEE_e4m3.vhdl) | Decoding process of flopoco |
+| [OutputIEEE_e4m4.vhdl](docs/flopoco_reference/OutputIEEE_e4m4.vhdl) |Final assemble process of flopoco |
+| [make_exact_seed_str.py](docs/seed/make_exact_seed_str.py) |How i use our own primitves to form a exact seed corresponds to flopoco's with 0 area difference in yosys|
+
+
