@@ -115,63 +115,57 @@ $_XOR_     31       31
 ```
 
 ## Primitives
+**General primitives** 
 
-**Generic bit-level operators** 
+**Example:** uadd_x_y: 
+```
+def _make_uadd(x_bits, y_bits):
+    out_bits = max(x_bits, y_bits) + 1
+    def uadd(a, b):
+        return _clip_unsigned(int(a) + int(b), out_bits)
+    return uadd
+```
+Add the bitwidth and the number at the same time, it will gives result for 3+4(011, 100), 7(0111), in_width 4
 
-| primitive | signature |
-|---|---|
-| `uadd_x_y` | `UInt(x),UInt(y) → UInt(max(x,y)+1)` | 
-| `usubwrap_x_y` | `UInt(x),UInt(y) → UInt(max(x,y)+1)` |
-| `sigmul_x_y` | same as `umul_x_y` | 
-| `roundadd_x_y` | `UInt(x),UInt(y),Sign → UInt(max(x,y))` | 
-| `uconcat_x_y` | `UInt(x),UInt(y) → UInt(x+y)` | 
-| `uhigh_x_y` | `UInt(x) → UInt(y)` (`y<x`) | 
-| `ulow_x_y` | `UInt(x) → UInt(y)` (`y<x`) | 
-| `ucast_x_y` | `UInt(x) → UInt(y)` (`x≠y`) | 
-| `ulshift_x_byN` | `UInt(x) → UInt(x+N)` | 
-| `msb_ux` | `UInt(x) → Sign` | 
-| `ugt_ux` | `UInt(x),UInt(x) → Sign` | 
-| `ite_ux` | `Sign,UInt(x),UInt(x) → UInt(x)` |
-| `uzero_x`/`uone_x` | constant `UInt(x)` | 
+| primitive | signature | comment |
+|---|---|---|
+| `uadd_x_y` | `UInt(x),UInt(y) → UInt(max(x,y)+1)` |  |
+| `usub_x_y` | `UInt(x),UInt(y) → UInt(max(x,y)+1)` | |
+| `uhigh_x_y` | `UInt(x) → UInt(y)` (`y<x`) | take the highest dst_bits of the src_bits |
+| `ulow_x_y` | `UInt(x) → UInt(y)` (`y<x`) | take the lowest dst_bits of the src_bits |
+| `ucast_x_y` | `UInt(x) → UInt(y)` (`x≠y`) | cast the input unsigned integer with src_bits to dst_bits, if src_bits>dst_bits, then round the input to the nearest integer, and clip to the range of unsigned integer with dst_bits |
+| `ulshift_x_byN` | `UInt(x) → UInt(x+N)` | left shift the src_bits for amount bit |
+| `ushr_x_y` | `UInt(x),UInt(y) → UInt(x)` | input 2 unsigned integer with x_bits and y_bits, output a unsigned integer with x_bits, the output is the result of a>>b, if b>=x_bits, then the output is 0 |
+| `ushl_x_y` | `UInt(x),UInt(y) → UInt(x)` | same as above but left shift |
+| `sticky_x_y` | `UInt(x),UInt(y) → Sign` | the sign just show wheter the stick is all 0 |
+| `msb_ux` | `UInt(x) → Sign` | get the top bit of an x-bit unsigned integer, as a Sign |
+| `ugt_ux` | `UInt(x),UInt(x) → Sign` | compare two unsigned integers |
+| `ite_ux` | `Sign,UInt(x),UInt(x) → UInt(x)` | if cond is True return a else return b, both a and b are x-bit unsigned integer |
+| `uzero_x`/`uone_x` | constant `UInt(x)` | (no comment, terminal) |
+| `xor_sign` | `Sign,Sign → Sign` | xor the input 2 sign, and return the result as a sign |
+| `ite_sign` | `Sign,Sign,Sign → Sign` | if then else |
+| `bit_to_u1` | `Sign → UInt(1)` | translate the carry or not to +1 or not |
+| `positive_sign`/`negative_sign` | constant `Sign` | terminal |
+| `sign_e{e}m{m}` | `UInt(in_width) → Sign` | make the sign primitives, the input is the unsigned integer with 8(in_width) bits, the output is the sign bit(e.g. 0 for neg, q for pos) |
+| `expf_e{e}m{m}` | `UInt(in_width) → UInt(e)` | make the exponent primitives, the input is the unsigned integer with 8, the output is the exponent with e bits |
+| `sig_e{e}m{m}` | `UInt(in_width) → UInt(m+1)` | the input is the unsigned integer with 8, the output is the significand with m+1 bits(plus the 1 in 1.xxx) |
+| `encode_e{eo}m{mo}` | `Sign,UInt(eo),UInt(mo) → UInt(out_width)` | make the whole minifloat number with the three parts |
 
-**Primitives that give GP a larger search space**
+**Multiplication primitives** (registered by `make_pset` only)
 
-| primitive | signature | 
-|---|---|
-| `ushr_x_y` | `UInt(x),UInt(y) → UInt(x)` | 
-| `ushl_x_y` | `UInt(x),UInt(y) → UInt(x)` | 
-| `sticky_x_y` | `UInt(x),UInt(y) → Sign` | 
-| `lzc_ux` | `UInt(x) → UInt(lzc_out_w)` | 
-| `orbit_ux` | `UInt(x),Sign → UInt(x)` | 
-| `unot_x` | `UInt(x) → UInt(x)` | 
+| primitive | signature | comment |
+|---|---|---|
+| `uconcat_x_y` | `UInt(x),UInt(y) → UInt(x+y)` | concat x and y together |
+| `umul_x_y` | `UInt(x),UInt(y) → UInt(x+y)` | unsigned mult, add, |
+| `sigmul_x_y` | same as `umul_x_y` | though these two looks the same, the difference is in the synth file, one is wire = l * r, one is make a module called sigmul4_4 and out it in it, not in the top module in yosys |
+| `usubwrap_x_y` | `UInt(x),UInt(y) → UInt(max(x,y)+1)` | these two looks the same too, but their difference is in whether the output is floored at 0 or wrapped around |
+| `roundadd_x_y` | `UInt(x),UInt(y),Sign → UInt(max(x,y))` | this is the round add, which is used in the rounding process, the input is 2 unsigned integer with x and y bits, and a sign bit, the output is an unsigned integer with max(x,y) bits, which is the sum of the 2 unsigned integer and the sign bit(if it is True, then add 1 to the sum), as it's wraparound_add, it dont work on the extend bit caused by carry |
+| `classify_e{e}m{m}` | `UInt(in_width) → UInt(2)` | make the classify of exception tag(abnormal or not) primitives, the input is the unsigned integer with 8, the output is the exception tag with 2 bits(00,01,11,10) |
+| `input_ieee_e{e}m{m}` | `UInt(in_width) → UInt(2+in_width)` | the input is the unsigned integer with 8, the output is 2+8 bits with the minifloat_8 and the exception tag |
+| `output_ieee_e{eo}m{mo}` | `UInt(2),Sign,UInt(eo),UInt(mo) → UInt(out_width)` | the 10 bit with exception tag minifloat(flopoco format) |
+| `exc_lookup` | `UInt(4) → UInt(2)` | input 2 tag to get the tag of their product |
+| `excpostnorm_lookup` | `UInt(2) → UInt(2)` | check if the product is normal or not |
 
-**Sign-related operators**
-
-| primitive | signature | 
-|---|---|
-| `xor_sign` | `Sign,Sign → Sign` | 
-| `ite_sign` | `Sign,Sign,Sign → Sign` | 
-| `bit_to_u1` | `Sign → UInt(1)` | 
-| `positive_sign`/`negative_sign` | 
-
-**Format-specific composite primitives** (`e`/`m` is the input format, `eo`/`mo` is the output format)
-
-| primitive | 
-|---|
-| `sign_e{e}m{m}` | 
-| `expf_e{e}m{m}` | 
-| `sig_e{e}m{m}` | 
-| `classify_e{e}m{m}` | 
-| `input_ieee_e{e}m{m}` | 
-| `output_ieee_e{eo}m{mo}` | 
-| `encode_e{eo}m{mo}` | 
-
-**Lookup-table primitives** (correspond to FloPoCo's `with...select`)
-
-| primitive |
-|---|
-| `exc_lookup` | 
-| `excpostnorm_lookup` | 
 
 ## Search
 ```python
@@ -277,144 +271,257 @@ E4M3×E4M3→E4M4, `threshold=1`, CVC5-verified unless noted:
 ## Verification
 
 ```python
-def verify_mult_ulp_bound(individual, src_format, out_format, ulp_threshold,
-                          timeout_ms=TIMEOUT_MS,
-                          ma_range=None, mb_range=None):
+def verify_mult_ulp_bound(individual, src_format, out_format, ulp_threshold,#check whether a GP individual's multiplication circuit stays within ulp_threshold ULPs of the exact product over the whole input domain
+                          timeout_ms=TIMEOUT_MS,#per-check CVC5 time limit in ms
+                          ma_range=None, mb_range=None):#optional (lo,hi) bounds to restrict ma/mb to a sub-domain
     #generate some basic setup:bitwidth, exponent&mantissa value
-    e, m = src_format
-    eo, mo = out_format
-    in_width = e + m + 1
-    out_sig = mo + 1
+    e, m = src_format#unpack the input format's exponent/fraction bit widths
+    eo, mo = out_format#unpack the output format's exponent/fraction bit widths
+    in_width = e + m + 1#total input bit width including the sign bit
+    out_sig = mo + 1#output significand width (hidden bit + fraction)
 
-    try:
-        solver = cvc5.Solver()
-        solver.setLogic("ALL")
-        solver.setOption("fp-exp", "true")
-        solver.setOption("produce-models", "true")
-        solver.setOption("tlimit-per", str(timeout_ms))
+    try:#wrap the whole SMT build+solve so any CVC5/format error is reported instead of crashing
+        solver = cvc5.Solver()#create a fresh CVC5 solver instance
+        solver.setLogic("ALL")#enable all theories (bitvectors + floating point + ITE)
+        solver.setOption("fp-exp", "true")#turn on CVC5's floating-point support
+        solver.setOption("produce-models", "true")#allow querying counterexample values on SAT
+        solver.setOption("tlimit-per", str(timeout_ms))#cap solving time per check
 
-        ma_bv = solver.mkConst(solver.mkBitVectorSort(in_width), 'ma')
+        ma_bv = solver.mkConst(solver.mkBitVectorSort(in_width), 'ma')#declare ma as a free bitvector variable
         mb_bv = solver.mkConst(solver.mkBitVectorSort(in_width), 'mb')#setup ma&mb as two unknown bitvector
 
         ma_exp = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, in_width - 2, m), ma_bv)#get the exponent and mantissa 
-        mb_exp = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, in_width - 2, m), mb_bv)
-        ma_frac = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, 0), ma_bv)
-        mb_frac = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, 0), mb_bv)
-        ma_exp_zero = solver.mkTerm(Kind.EQUAL, ma_exp, solver.mkBitVector(e, 0))
+        mb_exp = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, in_width - 2, m), mb_bv)#extract mb's exponent bits
+        ma_frac = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, 0), ma_bv)#extract ma's fraction bits
+        mb_frac = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, 0), mb_bv)#extract mb's fraction bits
+        ma_exp_zero = solver.mkTerm(Kind.EQUAL, ma_exp, solver.mkBitVector(e, 0))#is ma's exponent field all 0
         mb_exp_zero = solver.mkTerm(Kind.EQUAL, mb_exp, solver.mkBitVector(e, 0))#decide if the exponent is all 0
-        ma_top_frac_bit = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, m - 1), ma_frac)
+        ma_top_frac_bit = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, m - 1), ma_frac)#extract ma's top fraction bit
         mb_top_frac_bit = solver.mkTerm(solver.mkOp(Kind.BITVECTOR_EXTRACT, m - 1, m - 1), mb_frac)#get the firstt bit of mantissa
-        ma_top_frac_zero = solver.mkTerm(Kind.EQUAL, ma_top_frac_bit, solver.mkBitVector(1, 0))
+        ma_top_frac_zero = solver.mkTerm(Kind.EQUAL, ma_top_frac_bit, solver.mkBitVector(1, 0))#is ma's top fraction bit 0
         mb_top_frac_zero = solver.mkTerm(Kind.EQUAL, mb_top_frac_bit, solver.mkBitVector(1, 0))#decide if it's 0
-        ma_is_flush_zero = solver.mkTerm(Kind.AND, ma_exp_zero, ma_top_frac_zero)
+        ma_is_flush_zero = solver.mkTerm(Kind.AND, ma_exp_zero, ma_top_frac_zero)#ma is flushed to zero (exponent 0 and top fraction bit 0)
         mb_is_flush_zero = solver.mkTerm(Kind.AND, mb_exp_zero, mb_top_frac_zero)#if the expoent and the first bit of mantissa is all 0 then flush the number to 0
         either_flush_zero = solver.mkTerm(Kind.OR, ma_is_flush_zero, mb_is_flush_zero)#if one is 0, then product is 0
-        solver.assertFormula(solver.mkTerm(Kind.DISTINCT, ma_exp, solver.mkBitVector(e, (1 << e) - 1)))
+        solver.assertFormula(solver.mkTerm(Kind.DISTINCT, ma_exp, solver.mkBitVector(e, (1 << e) - 1)))#exclude ma's exponent-all-1s (inf/NaN) region
         solver.assertFormula(solver.mkTerm(Kind.DISTINCT, mb_exp, solver.mkBitVector(e, (1 << e) - 1)))#the exponent cant be all 1 either
 
-        rm = solver.mkRoundingMode(_RM)
-        ma_dbl = widen(solver, decode_native(solver, ma_bv, e, m), _DBL_E, _DBL_M)
+        rm = solver.mkRoundingMode(_RM)#rounding mode used everywhere below: round-nearest-ties-to-even
+        ma_dbl = widen(solver, decode_native(solver, ma_bv, e, m), _DBL_E, _DBL_M)#decode ma to its native minifloat FP value, widened to double
         mb_dbl = widen(solver, decode_native(solver, mb_bv, e, m), _DBL_E, _DBL_M)#transfer the value to a larger floating point format to avoid overflow
-        _assert_input_range(solver, ma_dbl, ma_range, rm, _DBL_E, _DBL_M)
-        _assert_input_range(solver, mb_dbl, mb_range, rm, _DBL_E, _DBL_M)
+        _assert_input_range(solver, ma_dbl, ma_range, rm, _DBL_E, _DBL_M)#restrict ma range
+        _assert_input_range(solver, mb_dbl, mb_range, rm, _DBL_E, _DBL_M)#restrict mb range
         exact_dbl = solver.mkTerm(Kind.FLOATINGPOINT_MULT, rm, ma_dbl, mb_dbl)#get the exact product
-        exact_finite = solver.mkTerm(Kind.NOT, solver.mkTerm(Kind.OR,
-            solver.mkTerm(Kind.FLOATINGPOINT_IS_INF, exact_dbl),
-            solver.mkTerm(Kind.FLOATINGPOINT_IS_NAN, exact_dbl)))
+        exact_finite = solver.mkTerm(Kind.NOT, solver.mkTerm(Kind.OR,#true unless the exact product is +-inf or NaN
+            solver.mkTerm(Kind.FLOATINGPOINT_IS_INF, exact_dbl),#check inf
+            solver.mkTerm(Kind.FLOATINGPOINT_IS_NAN, exact_dbl)))#check NaN
         solver.assertFormula(exact_finite)#if the product is not abnormal, store it
 
-        from benchmarks.minifloat import _bias
+        from benchmarks.minifloat import _bias#import the exponent bias helper
         min_normal_val = 2.0 ** (1 - _bias(eo))#the smallest number can be represented
-        min_normal_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, _DBL_E, _DBL_M + 1),
+        min_normal_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, _DBL_E, _DBL_M + 1),#convert min_normal_val to a double FP constant
                                        rm, _mkReal_exact(solver, min_normal_val))#exact product to floating number
-        exact_abs_dbl = solver.mkTerm(Kind.FLOATINGPOINT_ABS, exact_dbl)
-        is_underflow = solver.mkTerm(Kind.FLOATINGPOINT_LT, exact_abs_dbl, min_normal_dbl)
+        exact_abs_dbl = solver.mkTerm(Kind.FLOATINGPOINT_ABS, exact_dbl)#magnitude of the exact product
+        is_underflow = solver.mkTerm(Kind.FLOATINGPOINT_LT, exact_abs_dbl, min_normal_dbl)#true if the exact product is smaller than the smallest normal output value
         is_neg = solver.mkTerm(Kind.FLOATINGPOINT_IS_NEG, exact_dbl)#decide if there's underflow and if the product is negative
 
-        zero_pos = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, eo, out_sig), rm, solver.mkReal(0))
-        zero_neg = solver.mkTerm(Kind.FLOATINGPOINT_NEG, zero_pos)
-        min_normal_pos = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, eo, out_sig),
-                                       rm, _mkReal_exact(solver, min_normal_val))
-        min_normal_neg = solver.mkTerm(Kind.FLOATINGPOINT_NEG, min_normal_pos)
-        zero_signed = solver.mkTerm(Kind.ITE, is_neg, zero_neg, zero_pos)
+        zero_pos = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, eo, out_sig), rm, solver.mkReal(0))#+0 in the output format
+        zero_neg = solver.mkTerm(Kind.FLOATINGPOINT_NEG, zero_pos)#-0 in the output format
+        min_normal_pos = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, eo, out_sig),#smallest positive normal value in the output format
+                                       rm, _mkReal_exact(solver, min_normal_val))#(continued: convert min_normal_val)
+        min_normal_neg = solver.mkTerm(Kind.FLOATINGPOINT_NEG, min_normal_pos)#smallest negative normal value in the output format
+        zero_signed = solver.mkTerm(Kind.ITE, is_neg, zero_neg, zero_pos)#zero with the product's sign
         min_normal_signed = solver.mkTerm(Kind.ITE, is_neg, min_normal_neg, min_normal_pos)#decide if, the leading bit is 1 the negative, otherwise positive
 
-        nudge = solver.mkTerm(Kind.FLOATINGPOINT_MULT, rm, exact_abs_dbl,
-                              solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, _DBL_E, _DBL_M + 1),
-                                           rm, _mkReal_exact(solver, 2.0 ** -40)))
-        exact_for_ceil = solver.mkTerm(Kind.FLOATINGPOINT_ADD, rm, exact_dbl, nudge)
+        nudge = solver.mkTerm(Kind.FLOATINGPOINT_MULT, rm, exact_abs_dbl,#a tiny fraction of the product's magnitude, used to break exact ties before floor/ceil
+                              solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, _DBL_E, _DBL_M + 1),#(continued: build the 2^-40 constant)
+                                           rm, _mkReal_exact(solver, 2.0 ** -40)))#(continued: 2^-40 relative nudge factor)
+        exact_for_ceil = solver.mkTerm(Kind.FLOATINGPOINT_ADD, rm, exact_dbl, nudge)#exact product nudged slightly upward
         exact_for_floor = solver.mkTerm(Kind.FLOATINGPOINT_SUB, rm, exact_dbl, nudge)#the nudge is create to avoid exact integer like 15, if there's integer , the ceil and floor will be the same, so we need to add a small number to make sure they are different
 
-        ceil_native = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, eo, out_sig),
-                                    solver.mkRoundingMode(RoundingMode.ROUND_TOWARD_POSITIVE), exact_for_ceil)
-        floor_native = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, eo, out_sig),
+        ceil_native = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, eo, out_sig),#round the nudged-up value up to the output format
+                                    solver.mkRoundingMode(RoundingMode.ROUND_TOWARD_POSITIVE), exact_for_ceil)#(continued: use round-toward-positive-infinity)
+        floor_native = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, eo, out_sig),#round the nudged-down value down to the output format
                                      solver.mkRoundingMode(RoundingMode.ROUND_TOWARD_NEGATIVE), exact_for_floor)#using the round_towards func to get the ceil and floor value of the product
 
-        candidate_lo = solver.mkTerm(Kind.ITE, either_flush_zero, zero_signed,
-                                     solver.mkTerm(Kind.ITE, is_underflow, zero_signed, floor_native))
-        candidate_hi = solver.mkTerm(Kind.ITE, either_flush_zero, zero_signed,
+        candidate_lo = solver.mkTerm(Kind.ITE, either_flush_zero, zero_signed,#lower candidate: 0 if flushed
+                                     solver.mkTerm(Kind.ITE, is_underflow, zero_signed, floor_native))#(continued: else 0 if underflow, else floor_native)
+        candidate_hi = solver.mkTerm(Kind.ITE, either_flush_zero, zero_signed,#upper candidate: 0 if flushed
                                      solver.mkTerm(Kind.ITE, is_underflow, min_normal_signed, ceil_native))#both candidate_lo and candidate_hi are the two nearest floating point number to the exact product, if the product is underflow, then the lower bound is 0, and the upper bound is the smallest normal number
 
-        lo_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, _DBL_E, _DBL_M + 1), rm, candidate_lo)
-        hi_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, _DBL_E, _DBL_M + 1), rm, candidate_hi)
-        dist_lo = solver.mkTerm(Kind.FLOATINGPOINT_ABS, solver.mkTerm(Kind.FLOATINGPOINT_SUB, rm, exact_dbl, lo_dbl))
+        lo_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, _DBL_E, _DBL_M + 1), rm, candidate_lo)#candidate_lo converted to double
+        hi_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, _DBL_E, _DBL_M + 1), rm, candidate_hi)#candidate_hi converted to double
+        dist_lo = solver.mkTerm(Kind.FLOATINGPOINT_ABS, solver.mkTerm(Kind.FLOATINGPOINT_SUB, rm, exact_dbl, lo_dbl))#|exact - candidate_lo|
         dist_hi = solver.mkTerm(Kind.FLOATINGPOINT_ABS, solver.mkTerm(Kind.FLOATINGPOINT_SUB, rm, exact_dbl, hi_dbl))#get the absolue value of the difference between the exact product and the two nearest floating point number
-        lo_is_nearer = solver.mkTerm(Kind.FLOATINGPOINT_LT, dist_lo, dist_hi)
-        round_nearest_dbl = solver.mkTerm(Kind.ITE, lo_is_nearer, lo_dbl, hi_dbl)#see which line it's nearer to
+        lo_is_nearer = solver.mkTerm(Kind.FLOATINGPOINT_LT, dist_lo, dist_hi)#true if candidate_lo is strictly closer 
+        rne_native = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, eo, out_sig), rm, exact_dbl)#round the exact product straight to the output format with round-nearest-ties-to-even
+        rne_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, _DBL_E, _DBL_M + 1), rm, rne_native)#that RNE result converted back to double
+        round_nearest_dbl = solver.mkTerm(Kind.ITE, either_flush_zero, lo_dbl,#the reference value to compare the circuit's output against: 0 if flushed
+                                          solver.mkTerm(Kind.ITE, is_underflow,#(continued: else in the underflow gray zone...)
+                                                        solver.mkTerm(Kind.ITE, lo_is_nearer, lo_dbl, hi_dbl),
+                                                        rne_dbl))
 
-        ulp_size_dbl = solver.mkTerm(Kind.FLOATINGPOINT_ABS,
+        ulp_size_dbl = solver.mkTerm(Kind.FLOATINGPOINT_ABS,#size of one output ULP at this magnitude
                                      solver.mkTerm(Kind.FLOATINGPOINT_SUB, rm, hi_dbl, lo_dbl))#get how big 1 ulp is
 
         candidate_bv = gp_to_cvc5(individual, ma_bv, mb_bv, solver, src_format=src_format)#get the real gp expression output
         approx = decode_native_satmax(solver, candidate_bv, eo, mo)#candidate output to floating point number
         approx_dbl = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_FP, _DBL_E, _DBL_M + 1), rm, approx)#transfer the candidate output to double format
 
-        diff = solver.mkTerm(Kind.FLOATINGPOINT_ABS,
+        diff = solver.mkTerm(Kind.FLOATINGPOINT_ABS,#|circuit output - reference value|
                              solver.mkTerm(Kind.FLOATINGPOINT_SUB, rm, approx_dbl, round_nearest_dbl))
-        threshold_const = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, _DBL_E, _DBL_M + 1),
+        threshold_const = solver.mkTerm(solver.mkOp(Kind.FLOATINGPOINT_TO_FP_FROM_REAL, _DBL_E, _DBL_M + 1),#ulp_threshold as a double FP constant
                                         rm, _mkReal_exact(solver, ulp_threshold))
         threshold_dbl = solver.mkTerm(Kind.FLOATINGPOINT_MULT, rm, threshold_const, ulp_size_dbl)#using ulp_number*width to get how big exact;y we can tolerate
 
-        violation = solver.mkTerm(Kind.FLOATINGPOINT_GT, diff, threshold_dbl)
+        violation = solver.mkTerm(Kind.FLOATINGPOINT_GT, diff, threshold_dbl)#true when the circuit's error exceeds the allowed threshold
         solver.assertFormula(violation)#give the solver the constraint that the difference between the candidate output and the exact product is greater than the threshold
 
         result = solver.checkSat()#start check
 
-        if result.isUnsat():
-            del solver
-            gc.collect()
-            return True, None
+        if result.isUnsat():#no input makes the error exceed the threshold anywhere in the domain
+            del solver#free the CVC5 solver
+            gc.collect()#force garbage collection of the solver's native memory
+            return True, None#verified: the circuit is within tolerance everywhere
 
-        if result.isSat():
-            ma_val = _parse_bv_value(solver.getValue(ma_bv))
-            mb_val = _parse_bv_value(solver.getValue(mb_bv))
-            exact_val = _fp_dbl_to_float(solver.getValue(exact_dbl))
-            approx_val = _fp_dbl_to_float(solver.getValue(approx_dbl))
+        if result.isSat():#found an input pair that violates the threshold
+            ma_val = _parse_bv_value(solver.getValue(ma_bv))#extract the counterexample's ma bits
+            mb_val = _parse_bv_value(solver.getValue(mb_bv))#extract the counterexample's mb bits
+            exact_val = _fp_dbl_to_float(solver.getValue(exact_dbl))#the exact product at the counterexample
+            approx_val = _fp_dbl_to_float(solver.getValue(approx_dbl))#the circuit's output at the counterexample
             err = abs(approx_val - exact_val) / abs(exact_val) if exact_val else float('inf')
-            del solver
-            gc.collect()
+            del solver#free the CVC5 solver
+            gc.collect()#force garbage collection of the solver's native memory
             return False, {
-                'ma': ma_val, 'mb': mb_val,
-                'approx': approx_val, 'exact': exact_val,
-                'error': err,
-            }
+                'ma': ma_val, 'mb': mb_val,#counterexample inputs
+                'approx': approx_val, 'exact': exact_val,#counterexample outputs
+                'error': err,#relative error at the counterexample
+            }#end of counterexample dict
 
-        del solver
-        gc.collect()
-        return False, {'reason': 'timeout_or_unknown'}
+        del solver#free the CVC5 solver
+        gc.collect()#force garbage collection of the solver's native memory
+        return False, {'reason': 'timeout_or_unknown'}#solver couldn't decide within the time limit
 
-    except UnsupportedFormat as e:
-        if 'solver' in locals():
-            del solver
-        gc.collect()
-        return False, {'reason': 'unsupported_format', 'message': str(e)}
+    except UnsupportedFormat as e:#the requested format isn't supported by the SMT encoding
+        if 'solver' in locals():#only clean up if the solver was actually created
+            del solver#free the CVC5 solver
+        gc.collect()#force garbage collection of the solver's native memory
+        return False, {'reason': 'unsupported_format', 'message': str(e)}#report the format error
 
-    except Exception as e:
-        message = str(e)
-        if 'solver' in locals():
-            del solver
-        gc.collect()
-        return False, {'reason': 'exception', 'message': message}
+    except Exception as e:#catch-all for any other CVC5/encoding failure
+        message = str(e)#stash the error message
+        if 'solver' in locals():#only clean up if the solver was actually created
+            del solver#free the CVC5 solver
+        gc.collect()#force garbage collection of the solver's native memory
+        return False, {'reason': 'exception', 'message': message}#report the exception
+```
+
+## Verilog Translation
+
+```python
+def _zext(expr, src, dst, emit_forced=None):
+    if src == dst:
+        return expr
+    if src > dst:
+        if emit_forced is not None:
+            expr, _ = emit_forced(src, expr)
+        return f"{expr}[{dst - 1}:0]"
+    pad = dst - src
+    return "{" + f"{{{pad}{{1'b0}}}}, {expr}" + "}"
+
+
+def _clip_unsigned_verilog(emit, emit_forced, expr, width, dst_bits):
+    max_dst = (1 << dst_bits) - 1
+    above = f"({expr} > {width}'d{max_dst})"
+    clamped, _ = emit_forced(width, f"({above}) ? {width}'d{max_dst} : {expr}")
+    t, tw = emit(dst_bits, f"{clamped}[{dst_bits - 1}:0]")
+    return t, tw
+```
+
+```python
+    def emit(width, expr):
+        if inline:
+            return f"({expr})", width
+        key = (width, expr)
+        if key in wire_memo:
+            return wire_memo[key]
+        name = f"t{counter[0]}"
+        counter[0] += 1
+        lines.append(f"  wire [{width - 1}:0] {name} = {expr};")
+        wire_memo[key] = (name, width)
+        return name, width
+
+    def emit_forced(width, expr):
+        key = (width, expr)
+        if key in wire_memo:
+            return wire_memo[key]
+        name = f"t{counter[0]}"
+        counter[0] += 1
+        lines.append(f"  wire [{width - 1}:0] {name} = {expr};")
+        wire_memo[key] = (name, width)
+        return name, width
+
+    def emit_instance(module_name_, port_map, out_port, out_width):
+        name = f"t{counter[0]}"
+        counter[0] += 1
+        instance_counter[0] += 1
+        conns = ", ".join(f".{p}({v})" for p, v in port_map.items())
+        lines.append(f"  wire [{out_width - 1}:0] {name};")
+        lines.append(f"  {module_name_} {module_name_}_inst_{instance_counter[0]} ({conns}, .{out_port}({name}));")
+        return name, out_width
+```
+
+```python
+        if name.startswith('sigmul_'):
+            x, y = map(int, name[len('sigmul_'):].split('_'))
+            out = x + y
+            le, lw, next_idx = convert(next_idx)
+            re, rw, next_idx = convert(next_idx)
+            memo_key = (name, le, re)
+            if memo_key in submodule_call_memo:
+                cached_t, cached_tw = submodule_call_memo[memo_key]
+                return cached_t, cached_tw, next_idx
+            needed_sigmul_modules.add((x, y))
+            mod_name = f"sigmul_{x}_{y}"
+            t, tw = emit_instance(mod_name, {"X": le, "Y": re}, "R", out)
+            submodule_call_memo[memo_key] = (t, tw)
+            return t, tw, next_idx
+```
+
+```python
+        if name.startswith('umul_'):
+            x, y = map(int, name[len('umul_'):].split('_'))
+            out = x + y
+            le, lw, next_idx = convert(next_idx)
+            re, rw, next_idx = convert(next_idx)
+            l = _zext(le, lw, out, emit_forced)
+            r = _zext(re, rw, out, emit_forced)
+            t, tw = emit(out, f"{l} * {r}")
+```
+
+```python
+    body = "\n".join(lines)
+    module = (
+        f"module {module_name}(\n"
+        f"  input [{in_width - 1}:0] ma,\n"
+        f"  input [{in_width - 1}:0] mb,\n"
+        f"  output [{out_width - 1}:0] y\n"
+        f");\n"
+        f"{body}\n"
+        f"  assign y = {root_expr};\n"
+        f"endmodule\n"
+    )
+```
+
+```python
+    for x_val, y_val in sorted(needed_sigmul_modules):
+        out_val = x_val + y_val
+        helper_defs.append(
+            f"module sigmul_{x_val}_{y_val}(input [{x_val - 1}:0] X, "
+            f"input [{y_val - 1}:0] Y, output [{out_val - 1}:0] R);\n"
+            f"  assign R = X * Y;\n"
+            f"endmodule\n"
+        )
 ```
 
 ## Fitness Function
